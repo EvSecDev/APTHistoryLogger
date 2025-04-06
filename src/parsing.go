@@ -57,17 +57,18 @@ func parseEvent(event string) (newLog LogJSON, err error) {
 			err = fmt.Errorf("failed to parse field '%s': %v", fieldPrefix, err)
 			return
 		}
-
-		// Calculate elapsed time of apt operation
-		newLog.ElapsedSeconds, err = calculateElaspedTime(newLog.StartTimestamp, newLog.EndTimeStamp)
-		if err != nil {
-			err = fmt.Errorf("failed to calculate elapsed time: %v", err)
-			return
-		}
-
-		// Add total package number for this operation
-		newLog.TotalPackages = len(newLog.Install) + len(newLog.Upgrade) + len(newLog.Remove) + len(newLog.Purge)
 	}
+
+	// Calculate elapsed time of apt operation
+	newLog.ElapsedSeconds, err = calculateElaspedTime(newLog.StartTimestamp, newLog.EndTimeStamp)
+	if err != nil {
+		err = fmt.Errorf("failed to calculate elapsed time: %v", err)
+		return
+	}
+
+	// Add total package number for this operation
+	newLog.TotalPackages = len(newLog.Install) + len(newLog.Upgrade) + len(newLog.Remove) + len(newLog.Purge)
+
 	return
 }
 

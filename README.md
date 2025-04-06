@@ -32,6 +32,11 @@ Quick roadmap of features coming:
 - Built-in remote syslog option
 - Dedicated configuration file so specific CLI arguments are not needed
 
+## Installation
+
+A Debian package is provided for installation. Just `apt install ./apt-history-logger.deb` and you are done!
+Binary is at `/usr/bin/apthl`, Systemd service is called `apthl.service`.
+
 ## Notes
 
 ### Log File Monitoring

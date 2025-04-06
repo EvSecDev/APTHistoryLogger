@@ -111,7 +111,7 @@ General help using GNU software: <https://www.gnu.org/gethelp/>
 	flag.Parse()
 
 	// Meta info print out
-	const progVersion string = "v0.2.0"
+	const progVersion string = "v0.2.1"
 	if versionInfoRequested {
 		fmt.Printf("APTHistoryLogger %s\n", progVersion)
 		fmt.Printf("Built using %s(%s) for %s on %s\n", runtime.Version(), runtime.Compiler, runtime.GOOS, runtime.GOARCH)

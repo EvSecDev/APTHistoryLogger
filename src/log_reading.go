@@ -156,7 +156,7 @@ func logReaderContinuous(logFileInput string, logFileOutput string) {
 				if fileOutput != nil {
 					fileOutput.Write(jsonLine)
 				} else {
-					fmt.Println(jsonLine)
+					fmt.Println(string(jsonLine))
 				}
 
 				// Save the end position of this block
