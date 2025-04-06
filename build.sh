@@ -32,7 +32,7 @@ Options:
 
 function check_for_dev_artifacts {
 	# function args
-	srcDir=$1
+	local srcDir=$1
 
         # Quick check for any left over debug prints
         if egrep -R "DEBUG" $srcDir/*.go
@@ -49,8 +49,8 @@ function check_for_dev_artifacts {
 }
 
 function fix_program_package_list_print {
-        searchDir="$repoRoot/$SRCdir"
-        mainFile=$(grep -il "func main() {" $searchDir/*.go | egrep -v "testing")
+    searchDir="$repoRoot/$SRCdir"
+    mainFile=$(grep -il "func main() {" $searchDir/*.go | egrep -v "testing")
 
 	# Hold cumulative (duplicated) imports from all go source files
 	allImports=""
@@ -157,8 +157,7 @@ function debPkg {
 
 	chmod 755 $pkgDir/DEBIAN
 	chmod 644 $pkgDir/DEBIAN/*
-	chmod 755 $pkgDir/DEBIAN/postrm
-	chmod 755 $pkgDir/DEBIAN/postinst
+	chmod 755 $pkgDir/DEBIAN/{postrm,postinst,preinst}
 	chmod 644 $pkgDir/lib/systemd/system/*
 	chmod 755 $pkgDir/usr/bin/*
 

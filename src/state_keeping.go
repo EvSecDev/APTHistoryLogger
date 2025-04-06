@@ -10,16 +10,8 @@ import (
 func getLastPosition() (position int64, err error) {
 	_, err = os.Stat(stateDirectory)
 	if err != nil {
-		if os.IsNotExist(err) {
-			err = os.MkdirAll(stateDirectory, 0750)
-			if err != nil {
-				err = fmt.Errorf("failed to create state file directory: %v", err)
-				return
-			}
-		} else {
-			err = fmt.Errorf("unable to access state directory: %v", err)
-			return
-		}
+		err = fmt.Errorf("unable to access state directory: %v", err)
+		return
 	}
 
 	stateFile, err := os.OpenFile(logStateFilePath, os.O_RDWR|os.O_CREATE, 0600)
@@ -29,6 +21,7 @@ func getLastPosition() (position int64, err error) {
 			position = 0
 			return
 		}
+		err = fmt.Errorf("failed to open state file: %v", err)
 		return
 	}
 	defer stateFile.Close()
@@ -52,26 +45,20 @@ func getLastPosition() (position int64, err error) {
 func savePosition(position int64) (err error) {
 	_, err = os.Stat(stateDirectory)
 	if err != nil {
-		if os.IsNotExist(err) {
-			err = os.MkdirAll(stateDirectory, 0750)
-			if err != nil {
-				err = fmt.Errorf("failed to create state file directory: %v", err)
-				return
-			}
-		} else {
-			err = fmt.Errorf("unable to access state directory: %v", err)
-			return
-		}
+		err = fmt.Errorf("unable to access state directory: %v", err)
+		return
 	}
 
-	stateFile, err := os.OpenFile(logStateFilePath, os.O_RDWR|os.O_CREATE, 0600)
+	stateFile, err := os.OpenFile(logStateFilePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
+		err = fmt.Errorf("failed to open state file: %v", err)
 		return
 	}
 	defer stateFile.Close()
 
 	_, err = fmt.Fprintf(stateFile, "%d", position)
 	if err != nil {
+		err = fmt.Errorf("failed to write current log position to state file: %v", err)
 		return
 	}
 	return

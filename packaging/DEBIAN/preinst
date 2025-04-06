@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# Create state-keeping directory
+stateDirectory="/var/lib/APTHistoryLogger"
+if ! [[ -d $stateDirectory ]]
+then
+	mkdir -p ${stateDirectory}
+	if [[ $? != 0 ]]
+	then
+		echo "Failed to create state directory $stateDirectory" >&2
+		exit 1
+	fi
+fi
+
+# Create state file
+stateFile="$stateDirectory/log.state"
+if ! [[ -f $stateFile ]]
+then
+	touch ${stateFile}
+	if [[ $? != 0 ]]
+	then
+		echo "Failed to create state file $stateFile" >&2
+		exit 1
+	fi
+fi
+
+# Ensure correct permissions/ownership
+stateOwner='_apt'
+chmod 755 ${stateDirectory}
+if [[ $? != 0 ]]
+then
+	echo "Failed to change state directory permissions for $stateFile" >&2
+	exit 1
+fi
+
+chmod 600 ${stateFile}
+if [[ $? != 0 ]]
+then
+	echo "Failed to change state file permissions for $stateFile" >&2
+	exit 1
+fi
+
+chown $stateOwner:root ${stateFile}
+if [[ $? != 0 ]]
+then
+	echo "Failed to change state file ownership for $stateFile" >&2
+	exit 1
+fi
+
+exit 0

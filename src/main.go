@@ -30,9 +30,11 @@ const ( // Descriptive Names for available verbosity levels
 type LogJSON struct {
 	StartTimestamp string        `json:"StartTimestamp"`
 	EndTimeStamp   string        `json:"EndTimeStamp"`
+	ElapsedSeconds int           `json:"Elapsed-Seconds"`
 	CommandLine    string        `json:"CommandLine"`
 	RequestedBy    string        `json:"Requested-By,omitempty"`
 	RequestedByUID int           `json:"Requested-By-UID,omitempty"`
+	TotalPackages  int           `json:"Total-Packages,omitempty"`
 	Install        []PackageInfo `json:"Install,omitempty"`
 	Upgrade        []PackageInfo `json:"Upgrade,omitempty"`
 	Remove         []PackageInfo `json:"Remove,omitempty"`
@@ -49,7 +51,7 @@ type PackageInfo struct {
 
 // #### Written to only from main
 
-var dryRunRequested bool // for printing relevant information and bailing out before outbound remote connections are made
+var dryRunRequested bool // for printing relevant information and bailing out before processing
 
 // Integer for printing increasingly detailed information as program progresses
 //
@@ -69,8 +71,6 @@ func main() {
 	// Program Argument Variables
 	var daemonMode bool
 	var logFileInput string
-	var logRefreshSeconds int
-	var outputType string
 	var outputFile string
 	var versionInfoRequested bool
 	var versionRequested bool
@@ -83,9 +83,8 @@ APT History Logger (APTHL)
   Options:
     -d, --daemon                    Run continously
     -l, --log-file <path/to/log>    Input log file [default: /var/log/apt/history.log]
-    -i, --interval <#>              Wait interval (seconds) to scan for new log entries [default: 5]
-    -o, --output <stdout|file>      Output type [default: stdout]
-    -O, --out-file <path/to/file>   Output file if output type is 'file'
+    -o, --out-file <path/to/file>   Output to a file instead of stdout
+    -T, --dry-run                   Does all startups except process the log file
     -h, --help                      Show this help menu
     -V, --version                   Show version and packages
         --versionid                 Show only version number
@@ -99,12 +98,10 @@ General help using GNU software: <https://www.gnu.org/gethelp/>
 	flag.BoolVar(&daemonMode, "daemon", false, "")
 	flag.StringVar(&logFileInput, "l", "/var/log/apt/history.log", "")
 	flag.StringVar(&logFileInput, "log-file", "/var/log/apt/history.log", "")
-	flag.IntVar(&logRefreshSeconds, "i", 5, "")
-	flag.IntVar(&logRefreshSeconds, "interval", 5, "")
-	flag.StringVar(&outputType, "o", "stdout", "")
-	flag.StringVar(&outputType, "output", "stdout", "")
-	flag.StringVar(&outputFile, "O", "", "")
+	flag.StringVar(&outputFile, "o", "", "")
 	flag.StringVar(&outputFile, "out-file", "", "")
+	flag.BoolVar(&dryRunRequested, "T", false, "")
+	flag.BoolVar(&dryRunRequested, "dry-run", false, "")
 	flag.BoolVar(&versionInfoRequested, "V", false, "")
 	flag.BoolVar(&versionInfoRequested, "version", false, "")
 	flag.BoolVar(&versionRequested, "versionid", false, "")
@@ -114,12 +111,12 @@ General help using GNU software: <https://www.gnu.org/gethelp/>
 	flag.Parse()
 
 	// Meta info print out
-	const progVersion string = "v0.1.0"
+	const progVersion string = "v0.2.0"
 	if versionInfoRequested {
 		fmt.Printf("APTHistoryLogger %s\n", progVersion)
 		fmt.Printf("Built using %s(%s) for %s on %s\n", runtime.Version(), runtime.Compiler, runtime.GOOS, runtime.GOARCH)
 		fmt.Print("License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>\n")
-		fmt.Print("Direct Package Imports: runtime strings strconv io bufio encoding/json flag os/signal fmt time syscall os sync\n")
+		fmt.Print("Direct Package Imports: runtime strings strconv io bufio encoding/json flag os/signal fmt time unsafe syscall os sync\n")
 		return
 	} else if versionRequested {
 		fmt.Println(progVersion)
@@ -128,7 +125,7 @@ General help using GNU software: <https://www.gnu.org/gethelp/>
 
 	// Parse User Choices - see function comment for what each does
 	if daemonMode {
-		logReaderContinuous(logFileInput, logRefreshSeconds)
+		logReaderContinuous(logFileInput, outputFile)
 	} else {
 		printMessage(verbosityStandard, "No arguments specified or incorrect argument combination. Use '-h' or '--help' to guide your way.\n")
 	}

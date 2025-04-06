@@ -57,6 +57,16 @@ func parseEvent(event string) (newLog LogJSON, err error) {
 			err = fmt.Errorf("failed to parse field '%s': %v", fieldPrefix, err)
 			return
 		}
+
+		// Calculate elapsed time of apt operation
+		newLog.ElapsedSeconds, err = calculateElaspedTime(newLog.StartTimestamp, newLog.EndTimeStamp)
+		if err != nil {
+			err = fmt.Errorf("failed to calculate elapsed time: %v", err)
+			return
+		}
+
+		// Add total package number for this operation
+		newLog.TotalPackages = len(newLog.Install) + len(newLog.Upgrade) + len(newLog.Remove) + len(newLog.Purge)
 	}
 	return
 }
@@ -70,6 +80,32 @@ func parseTimestamp(rawTimestamp string) (timestamp string, err error) {
 	}
 	timestamp = dateTime.Format(time.RFC3339)
 
+	return
+}
+
+func calculateElaspedTime(startTime string, endTime string) (elapsedSeconds int, err error) {
+	// Assume input is ISO8601 format (RFC3339)
+	layout := time.RFC3339
+
+	// Parse the start time
+	start, err := time.Parse(layout, startTime)
+	if err != nil {
+		err = fmt.Errorf("invalid start time: %v", err)
+		return
+	}
+
+	// Parse the end time
+	end, err := time.Parse(layout, endTime)
+	if err != nil {
+		err = fmt.Errorf("invalid end time: %v", err)
+		return
+	}
+
+	// Calculate the duration between the start and end times
+	duration := end.Sub(start)
+
+	// Return the duration in whole seconds
+	elapsedSeconds = int(duration.Seconds())
 	return
 }
 

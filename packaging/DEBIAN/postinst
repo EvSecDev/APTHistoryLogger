@@ -1,12 +1,23 @@
 #!/bin/bash
 
-# Ensure service is enabled on boot
+# Ensure service starts OK
 serviceName="apthl.service"
+enableStatus=$(systemctl is-active $serviceName)
+if [[ $enableStatus == inactive ]]
+then
+	systemctl start $serviceName
+	if [[ $? != 0 ]]
+	then
+		echo "Warning: failed to start systemd service $serviceName"
+		serviceStartFailed='true'
+	fi
+fi
+
+# Ensure service is enabled on boot
 enableStatus=$(systemctl is-enabled $serviceName)
-if [[ $enableStatus == disabled ]]
+if [[ $enableStatus == disabled ]] && [[ $serviceStartFailed != true ]]
 then
 	systemctl enable $serviceName
-	# shellcheck disable=SC2181
 	if [[ $? != 0 ]]
 	then
 		echo "Warning: failed to enable systemd service $serviceName"

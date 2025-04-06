@@ -6,7 +6,7 @@ After=systemd-journald.service
 [Service]
 User=_apt
 Group=nogroup
-ExecStart=/usr/local/bin/apthl --daemon --log-file /var/log/apt/history.log
+ExecStart=/usr/bin/apthl --daemon --log-file /var/log/apt/history.log
 Type=exec
 RestartSec=60
 Restart=on-abnormal
