@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# No cleanups on package upgrades
+if [[ $1 == upgrade ]] || [[ $1 == failed-upgrade ]] || [[ $1 == abort-upgrade ]]
+then
+	exit 0
+fi
+
+# Cleanup state-keeping directory
+stateDirectory="/var/lib/APTHistoryLogger"
+if [[ -d $stateDirectory ]]
+then
+	rm -r ${stateDirectory}
+	# shellcheck disable=SC2181
+	if [[ $? != 0 ]]
+	then
+		echo "Warning: failed to remove state directory $stateDirectory"
+	fi
+fi
+
+# Ensure service is disable on removals
+serviceName="apthl.service"
+enableStatus=$(systemctl is-enabled $serviceName)
+if [[ $enableStatus == enabled ]]
+then
+	systemctl disable $serviceName
+	# shellcheck disable=SC2181
+	if [[ $? != 0 ]]
+	then
+		echo "Warning: failed to disable systemd service $serviceName"
+	fi
+fi
+
+# Cleanup systemd /lib
+serviceUnitFile="/lib/systemd/system/apthl.service"
+if [[ -f $serviceUnitFile ]]
+then
+	rm ${serviceUnitFile}
+	# shellcheck disable=SC2181
+	if [[ $? != 0 ]]
+	then
+		echo "Warning: failed to remove systemd unit file $serviceUnitFile"
+	fi
+fi
+
+exit 0

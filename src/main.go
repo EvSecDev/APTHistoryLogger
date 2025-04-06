@@ -1,0 +1,135 @@
+// APTHistoryLogger/m/v2
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+	"runtime"
+)
+
+// ###################################
+//	GLOBAL CONSTANTS
+// ###################################
+
+const stateDirectory string = "/var/lib/APTHistoryLogger"
+const logStateFilePath string = "/var/lib/APTHistoryLogger/log.state"
+const ( // Descriptive Names for available verbosity levels
+	verbosityNone int = iota
+	verbosityStandard
+	verbosityProgress
+	verbosityData
+	verbosityFullData
+	verbosityDebug
+)
+
+// ###################################
+//  GLOBAL VARIABLES
+// ###################################
+
+type LogJSON struct {
+	StartTimestamp string        `json:"StartTimestamp"`
+	EndTimeStamp   string        `json:"EndTimeStamp"`
+	CommandLine    string        `json:"CommandLine"`
+	RequestedBy    string        `json:"Requested-By,omitempty"`
+	RequestedByUID int           `json:"Requested-By-UID,omitempty"`
+	Install        []PackageInfo `json:"Install,omitempty"`
+	Upgrade        []PackageInfo `json:"Upgrade,omitempty"`
+	Remove         []PackageInfo `json:"Remove,omitempty"`
+	Purge          []PackageInfo `json:"Purge,omitempty"`
+	Error          string        `json:"Error,omitempty"`
+}
+
+type PackageInfo struct {
+	Name       string `json:"package"`
+	Arch       string `json:"archiecture"`
+	OldVersion string `json:"old-version,omitempty"`
+	Version    string `json:"version"`
+}
+
+// #### Written to only from main
+
+var dryRunRequested bool // for printing relevant information and bailing out before outbound remote connections are made
+
+// Integer for printing increasingly detailed information as program progresses
+//
+//	0 - None: quiet (prints nothing but errors)
+//	1 - Standard: normal progress messages
+//	2 - Progress: more progress messages (no actual data outputted)
+//	3 - Data: shows limited data being processed
+//	4 - FullData: shows full data being processed
+//	5 - Debug: shows extra data during processing (raw bytes)
+var globalVerbosityLevel int
+
+// ###################################
+//      MAIN - START
+// ###################################
+
+func main() {
+	// Program Argument Variables
+	var daemonMode bool
+	var logFileInput string
+	var logRefreshSeconds int
+	var outputType string
+	var outputFile string
+	var versionInfoRequested bool
+	var versionRequested bool
+
+	// Help Menu
+	const usage = `
+APT History Logger (APTHL)
+  Watches apt history.log and parses events into single-line JSON
+
+  Options:
+    -d, --daemon                    Run continously
+    -l, --log-file <path/to/log>    Input log file [default: /var/log/apt/history.log]
+    -i, --interval <#>              Wait interval (seconds) to scan for new log entries [default: 5]
+    -o, --output <stdout|file>      Output type [default: stdout]
+    -O, --out-file <path/to/file>   Output file if output type is 'file'
+    -h, --help                      Show this help menu
+    -V, --version                   Show version and packages
+        --versionid                 Show only version number
+
+Report bugs to: dev@evsec.net
+APTHistorLogger home page: <https://github.com/EvSecDev/APTHistoryLogger>
+General help using GNU software: <https://www.gnu.org/gethelp/>
+`
+	// Read Program Arguments - allowing both short and long args
+	flag.BoolVar(&daemonMode, "d", false, "")
+	flag.BoolVar(&daemonMode, "daemon", false, "")
+	flag.StringVar(&logFileInput, "l", "/var/log/apt/history.log", "")
+	flag.StringVar(&logFileInput, "log-file", "/var/log/apt/history.log", "")
+	flag.IntVar(&logRefreshSeconds, "i", 5, "")
+	flag.IntVar(&logRefreshSeconds, "interval", 5, "")
+	flag.StringVar(&outputType, "o", "stdout", "")
+	flag.StringVar(&outputType, "output", "stdout", "")
+	flag.StringVar(&outputFile, "O", "", "")
+	flag.StringVar(&outputFile, "out-file", "", "")
+	flag.BoolVar(&versionInfoRequested, "V", false, "")
+	flag.BoolVar(&versionInfoRequested, "version", false, "")
+	flag.BoolVar(&versionRequested, "versionid", false, "")
+
+	// Custom help menu
+	flag.Usage = func() { fmt.Printf("Usage: %s [OPTIONS]...%s", os.Args[0], usage) }
+	flag.Parse()
+
+	// Meta info print out
+	const progVersion string = "v0.1.0"
+	if versionInfoRequested {
+		fmt.Printf("APTHistoryLogger %s\n", progVersion)
+		fmt.Printf("Built using %s(%s) for %s on %s\n", runtime.Version(), runtime.Compiler, runtime.GOOS, runtime.GOARCH)
+		fmt.Print("License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>\n")
+		fmt.Print("Direct Package Imports: runtime strings strconv io bufio encoding/json flag os/signal fmt time syscall os sync\n")
+		return
+	} else if versionRequested {
+		fmt.Println(progVersion)
+		return
+	}
+
+	// Parse User Choices - see function comment for what each does
+	if daemonMode {
+		logReaderContinuous(logFileInput, logRefreshSeconds)
+	} else {
+		printMessage(verbosityStandard, "No arguments specified or incorrect argument combination. Use '-h' or '--help' to guide your way.\n")
+	}
+}

@@ -1,0 +1,15 @@
+[Unit]
+Description=APT History Logger
+Documentation=https://github.com/EvSecDev/APTHistoryLogger
+After=systemd-journald.service
+
+[Service]
+User=_apt
+Group=nogroup
+ExecStart=/usr/local/bin/apthl --daemon --log-file /var/log/apt/history.log
+Type=exec
+RestartSec=60
+Restart=on-abnormal
+
+[Install]
+WantedBy=multi-user.target
