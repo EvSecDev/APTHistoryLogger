@@ -3,6 +3,9 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"compress/gzip"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,7 +14,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"unsafe"
 )
 
 func logReaderContinuous(logFileInput string, logFileOutput string) {
@@ -31,6 +33,18 @@ func logReaderContinuous(logFileInput string, logFileOutput string) {
 		fileOutput, err = os.OpenFile(logFileOutput, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 		logError("Failed to open output file", err)
 		defer fileOutput.Close()
+	}
+
+	var logReader io.Reader
+
+	if strings.HasSuffix(logFileInput, ".gz") {
+		gzReader, err := gzip.NewReader(log)
+		logError("Failed to read gzip'ed log file", err)
+		defer gzReader.Close()
+
+		logReader = gzReader
+	} else {
+		logReader = log
 	}
 
 	// WaitGroup to ensure that parsing finishes before program exits
@@ -85,7 +99,13 @@ func logReaderContinuous(logFileInput string, logFileOutput string) {
 			// Parse the event
 			var offset uint32
 			for offset <= uint32(n)-syscall.SizeofInotifyEvent {
-				event := (*syscall.InotifyEvent)(unsafe.Pointer(&buf[offset]))
+				var event *syscall.InotifyEvent
+
+				// Retrieve the event
+				eventBytes := buf[offset : offset+syscall.SizeofInotifyEvent]
+				reader := bytes.NewReader(eventBytes)
+				err = binary.Read(reader, binary.LittleEndian, &event)
+				logError("Failed to read event content", err)
 
 				if event.Mask&syscall.IN_MODIFY != 0 {
 					printMessage(verbosityProgress, "File modified: %s\n", logFileInput)
@@ -104,7 +124,7 @@ func logReaderContinuous(logFileInput string, logFileOutput string) {
 
 	// Create a scanner to read the file
 	var scanner *bufio.Scanner
-	scanner = bufio.NewScanner(log)
+	scanner = bufio.NewScanner(logReader)
 
 	if dryRunRequested {
 		printMessage(verbosityStandard, "Dry-run requested, not processing log file. Exiting...\n")
@@ -172,9 +192,8 @@ func logReaderContinuous(logFileInput string, logFileOutput string) {
 		}
 
 		// Check for errors in the scanner
-		if err := scanner.Err(); err != nil {
-			logError("Error reading log", err)
-		}
+		err = scanner.Err()
+		logError("Error reading log", err)
 
 		// Get the current file offset
 		offset, err := log.Seek(0, io.SeekCurrent)
@@ -192,4 +211,88 @@ func logReaderContinuous(logFileInput string, logFileOutput string) {
 		log.Seek(offset, io.SeekStart)
 		scanner = bufio.NewScanner(log) // Reset the scanner to continue scanning after the last offset
 	}
+}
+
+func logReaderSearch(logFileInput string, searchParams SearchParameters) (parsedBuffer []LogJSON, err error) {
+	log, err := os.Open(logFileInput)
+	if err != nil {
+		err = fmt.Errorf("failed to open log file: %v", err)
+		return
+	}
+	defer log.Close()
+
+	var logReader io.Reader
+
+	if strings.HasSuffix(logFileInput, ".gz") {
+		var gzReader *gzip.Reader
+		gzReader, err = gzip.NewReader(log)
+		if err != nil {
+			err = fmt.Errorf("failed to open gz log file: %v", err)
+			return
+		}
+		defer gzReader.Close()
+
+		logReader = gzReader
+	} else {
+		logReader = log
+	}
+
+	scanner := bufio.NewScanner(logReader)
+
+	var eventBlock string    // Buffer for the APT multi-line log entries
+	var blockHasStarted bool // Flag to track if the current lines being prcessed are within a block
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if strings.HasPrefix(line, "Start-Date: ") {
+			// Always ensure block buffer is empty on new block
+			eventBlock = ""
+
+			// Marks all lines after this one as "to be added to block"
+			blockHasStarted = true
+		}
+
+		// Add all lines within the block to the buffer
+		if blockHasStarted {
+			eventBlock += line + "\n"
+		}
+
+		// Once at the end of block, parse the entries
+		if strings.HasPrefix(line, "End-Date: ") {
+			blockHasStarted = false
+
+			printMessage(verbosityProgress, "Parsing event fields\n")
+
+			// Parse the log lines into single JSON
+			var newLog LogJSON
+			newLog, err = parseEvent(eventBlock)
+			if err != nil {
+				err = fmt.Errorf("failed to parse log entry: %v", err)
+				return
+			}
+
+			// Determine if this block matches any search criteria
+			var searchMatched bool
+			var matchedLog LogJSON
+			searchMatched, matchedLog, err = newLog.findMatches(searchParams)
+			if err != nil {
+				err = fmt.Errorf("failed to search in log event: %v", err)
+				return
+			}
+
+			if searchMatched {
+				parsedBuffer = append(parsedBuffer, matchedLog)
+			}
+
+			// Always ensure block buffer is empty at end of block
+			eventBlock = ""
+		}
+	}
+	err = scanner.Err()
+	if err != nil {
+		err = fmt.Errorf("encountered error while reading log lines: %v", err)
+		return
+	}
+
+	return
 }

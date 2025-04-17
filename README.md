@@ -13,11 +13,13 @@ The output is written to stdout by default (which being a Systemd service means 
 The program also extracts additional information to include in the output log.
 In total, the output JSON contains the following information:
 
+- Event ID
 - Start date
 - End date
 - Total elapsed seconds
 - Total packages
 - List of packages per operation type (Install, Upgrade, Remove, Purge)
+- APT operation true/false
 - Package Name
 - Package Architecture
 - Package Version
@@ -27,9 +29,6 @@ In total, the output JSON contains the following information:
 
 Quick roadmap of features coming:
 
-- Offer CLI-based searching of specific event types, package names, ect., from the local system
-- Glob/Regex based searching
-- Built-in remote syslog option
 - Dedicated configuration file so specific CLI arguments are not needed
 
 ## Installation
