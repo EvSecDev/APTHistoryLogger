@@ -164,10 +164,14 @@ func logReaderContinuous(logFileInput string, logFileOutput string) {
 				// Parse the log lines into single JSON
 				var newLog LogJSON
 				newLog, err = parseEvent(eventBlock)
-				logError("Failed to parse log entry", err)
+				if err != nil {
+					printMessage(verbosityNone, "Failed to parse log entry: %v: (%s)\n", err, strings.ReplaceAll(eventBlock, "\n", ":"))
+				}
 
 				jsonLine, err := json.Marshal(newLog)
-				logError("Invalid JSON", err)
+				if err != nil {
+					printMessage(verbosityNone, "Invalid JSON: %v: (%v)\n", err, newLog)
+				}
 
 				// Add newline after each JSON line
 				jsonLine = append(jsonLine, '\n')
