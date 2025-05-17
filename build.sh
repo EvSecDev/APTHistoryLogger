@@ -1,7 +1,27 @@
 #!/bin/bash
 if [ -z "$BASH_VERSION" ]
 then
-	echo "This script must be run in BASH."
+	echo "This script must be run in BASH." >&2
+	exit 1
+fi
+
+# Define colors - unsupported terminals fail safe
+if [ -t 1 ] && { [[ "$TERM" =~ "xterm" ]] || [[ "$COLORTERM" == "truecolor" ]] || tput setaf 1 &>/dev/null; }
+then
+	readonly RED='\033[31m'
+	readonly GREEN='\033[32m'
+	readonly YELLOW='\033[33m'
+	readonly BLUE='\033[34m'
+	readonly RESET='\033[0m'
+	readonly BOLD='\033[1m'
+fi
+
+readonly configFile="build.conf"
+# shellcheck source=./build.conf
+source "$configFile"
+if [[ $? != 0 ]]
+then
+	echo -e "${RED}[-] ERROR${RESET}: Failed to import build config variables in $configFile" >&2
 	exit 1
 fi
 
@@ -12,191 +32,142 @@ set -e
 command -v go >/dev/null
 command -v sha256sum >/dev/null
 
-# Vars
+# Variables
 repoRoot=$(pwd)
-SRCdir="src"
-outputEXE="apthl"
-debPkgName="apt-history-logger"
 
-function usage {
-	echo "Usage $0
+# Check for required external variables
+if [[ -z $HOME ]]
+then
+	echo -e "${RED}[-] ERROR${RESET}: Missing HOME variable" >&2
+	exit 1
+fi
+if [[ -z $repoRoot ]]
+then
+	echo -e "${RED}[-] ERROR${RESET}: Failed to determine current directory" >&2
+	exit 1
+fi
 
-Options:
-  -b          Build the program using defaults
-  -d          Build debian package
-  -a <arch>   Architecture of compiled binary (amd64, arm64) [default: amd64]
-  -o <os>     Which operating system to build for (linux, windows) [default: linux]
-  -u          Update go packages for program
-"
-}
+# Load external functions
+while IFS= read -r -d '' helperFunction
+do
+	source "$helperFunction"
+	if [[ $? != 0 ]]
+	then
+		echo -e "${RED}[-] ERROR${RESET}: Failed to import build helper functions" >&2
+		exit 1
+	fi
+done < <(find .build_helpers/ -maxdepth 1 -type f -iname "*.sh" -print0)
 
-function check_for_dev_artifacts {
-	# function args
-	local srcDir=$1
+##################################
+# MAIN BUILD
+##################################
 
-        # Quick check for any left over debug prints
-        if egrep -R "DEBUG" $srcDir/*.go
-        then
-                echo "  [-] Debug print found in source code. You might want to remove that before release."
-        fi
-
-	# Quick staticcheck check - ignoring punctuation in error strings
-	cd $SRCdir
-	set +e
-	staticcheck *.go | egrep -v "error strings should not"
-	set -e
-	cd $repoRoot/
-}
-
-function fix_program_package_list_print {
-    searchDir="$repoRoot/$SRCdir"
-    mainFile=$(grep -il "func main() {" $searchDir/*.go | egrep -v "testing")
-
-	# Hold cumulative (duplicated) imports from all go source files
-	allImports=""
-
-	# Loop all go source files
-	for gosrcfile in $(find "$searchDir/" -maxdepth 1 -iname *.go)
-	do
-	        # Get space delimited single line list of imported package names (no quotes) for this go file
-	        allImports+=$(cat $gosrcfile | awk '/import \(/,/\)/' | egrep -v "import \(|\)|^\n$" | sed -e 's/"//g' -e 's/\s//g' | tr '\n' ' ' | sed 's/  / /g')
-	done
-
-	# Put space delimited list of all the imports into an array
-	IFS=' ' read -r -a pkgarr <<< "$allImports"
-
-	# Create associative array for deduping
-	declare -A packages
-
-	# Add each import package to the associative array to delete dups
-	for pkg in "${pkgarr[@]}"
-	do
-	        packages["$pkg"]=1
-	done
-
-	# Convert back to regular array
-	allPackages=("${!packages[@]}")
-
-	# search line in each program that contains package import list for version print
-	packagePrintLine='fmt.Print("Direct Package Imports: '
-
-	# Format package list into go print line
-	newPackagePrintLine=$'\t\tfmt.Print("Direct Package Imports: '"${allPackages[@]}"'\\n")'
-
-	# Remove testing package
-	newPackagePrintLine=$(echo "$newPackagePrintLine" | sed 's/ testing//')
-
-	# Write new package line into go source file that has main function
-	sed -i "/$packagePrintLine/c\\$newPackagePrintLine" $mainFile
-}
-
-function binary {
+function compile_program_prechecks() {
 	# Always ensure we start in the root of the repository
-	cd $repoRoot/
+	cd "$repoRoot"/
 
 	# Check for things not supposed to be in a release
-	check_for_dev_artifacts "$SRCdir"
+	if type	-t check_for_dev_artifacts &>/dev/null
+	then
+		check_for_dev_artifacts "$SRCdir" "$repoRoot"
+	fi
 
 	# Check for new packages that were imported but not included in version output
-	fix_program_package_list_print
+	if type -t update_program_package_imports &>/dev/null
+	then
+		update_program_package_imports "$repoRoot/$SRCdir" "$packagePrintLine"
+	fi
+
+	# Ensure readme has updated code blocks
+	if type -t update_readme &>/dev/null
+	then
+		update_readme "$SRCdir" "$srcHelpMenuStartDelimiter" "$readmeHelpMenuStartDelimiter"
+	fi
+}
+
+function compile_program() {
+	local GOARCH GOOS buildFull replaceDeployedExe deployedBinaryPath buildVersion
+	GOARCH=$1
+	GOOS=$2
+	buildFull=$3
+	replaceDeployedExe=$4
 
 	# Move into dir
 	cd $SRCdir
 
 	# Run tests
+	echo "[*] Running all tests..."
 	go test
+	echo -e "   ${GREEN}[+] DONE${RESET}"
+
+	echo "[*] Compiling program binary..."
 
 	# Vars for build
-	inputGoSource="*.go"
 	export CGO_ENABLED=0
-	export GOARCH=$1
-	export GOOS=$2
+	export GOARCH
+	export GOOS
 
 	# Build binary
-	go build -o $repoRoot/$outputEXE -a -ldflags '-s -w -buildid= -extldflags "-static"' $inputGoSource
-	cd $repoRoot
-}
+	go build -o "$repoRoot"/"$outputEXE" -a -ldflags '-s -w -buildid= -extldflags "-static"' ./*.go
+	cd "$repoRoot"
 
-function debPkg {
-	local arch=$1
-	local os=$2
+	# Get version
+	buildVersion=$(./$outputEXE --versionid)
 
-        # Always ensure we start in the root of the repository
-        cd $repoRoot/
-
-	# Build the binary
-	binary "$arch" "$os"
-
-	# Update control file with current binary version
-	local binaryVersion=$($repoRoot/${outputEXE} --versionid | sed 's/v//')
-	if [[ -z $binaryVersion ]]
+	# Rename to more descriptive if full build was requested
+	if [[ $buildFull == true ]]
 	then
-		echo "Unable to determine binary version" >&2
-		exit 1
+		local fullNameEXE
+
+		# Rename with version
+		fullNameEXE="${outputEXE}_${buildVersion}_${GOOS}-${GOARCH}-static"
+		mv "$outputEXE" "$fullNameEXE"
+
+		# Create hash for built binary
+		sha256sum "$fullNameEXE" > "$fullNameEXE".sha256
+	elif [[ $replaceDeployedExe == true ]]
+	then
+		# Replace existing binary with new one
+		deployedBinaryPath=$(which $outputEXE)
+		if [[ -z $deployedBinaryPath ]]
+		then
+			echo -e "${RED}[-] ERROR${RESET}: Could not determine path of existing program binary, refusing to continue" >&2
+			rm "$outputEXE"
+			exit 1
+		fi
+
+		mv "$outputEXE" "$deployedBinaryPath"
 	fi
-	sed -i 's/Version:.*/Version: '"$binaryVersion"'/' $repoRoot/packaging/DEBIAN/control
 
-	# Always ensure we start in the root of the repository
-	cd $repoRoot/
-
-	# Temp dir for package
-	mkdir $repoRoot/temp
-
-	# Prepare directories and move files in
-	local tempDir="$repoRoot/temp"
-	local pkgDir="$tempDir/$debPkgName"
-	mkdir -p $pkgDir
-	mkdir -p $pkgDir/usr/bin
-	mkdir -p $pkgDir/lib/systemd/system
-
-	mv $outputEXE $pkgDir/usr/bin/
-	cp $repoRoot/packaging/apthl.service $pkgDir/lib/systemd/system/
-	cp -r $repoRoot/packaging/DEBIAN $pkgDir/
-	cp $repoRoot/LICENSE.md $pkgDir/DEBIAN/copyright
-	sed -i 's/Architecture: amd64/Architecture: '"$arch"'/' $pkgDir/DEBIAN/control
-
-	chmod 755 $pkgDir/DEBIAN
-	chmod 644 $pkgDir/DEBIAN/*
-	chmod 755 $pkgDir/DEBIAN/{postrm,postinst,preinst}
-	chmod 644 $pkgDir/lib/systemd/system/*
-	chmod 755 $pkgDir/usr/bin/*
-
-	# Move into build dir
-	cd $tempDir
-
-	# Create package
-	dpkg-deb --verbose --root-owner-group --build apt-history-logger
-
-	# Move package back to root
-	mv ${pkgDir}.deb $repoRoot/
-        cd $repoRoot/
-
-	# Cleanup build dir
-	rm -r $tempDir 2>/dev/null
+	echo -e "   ${GREEN}[+] DONE${RESET}: Built version ${BOLD}${BLUE}$buildVersion${RESET}"
 }
 
-function update_go_packages {
-	# Always ensure we start in the root of the repository
-	cd $repoRoot/
-
-	# Move into src dir
-	cd $SRCdir
-
-	# Run go updates
-	echo "==== Updating Go packages ===="
-	go get -u all
-	go mod verify
-	go mod tidy
-	echo "==== Updates Finished ===="
-}
-
+##################################
 # START
-# DEFAULT CHOICES
+##################################
+
+function usage {
+	echo "Usage $0
+Program Build Script and Helpers
+
+Options:
+  -b           Build the program using defaults
+  -r           Replace binary in path with updated one
+  -a <arch>    Architecture of compiled binary (amd64, arm64) [default: amd64]
+  -o <os>      Which operating system to build for (linux, windows) [default: linux]
+  -u           Update go packages for program
+  -p           Prepare release notes and attachments
+  -P <version> Publish release to github
+  -h           Print this help menu
+"
+}
+
+# DEFAULTS
 architecture="amd64"
 os="linux"
 
 # Argument parsing
-while getopts 'a:o:bnudh' opt
+while getopts 'a:o:P:buprh' opt
 do
 	case "$opt" in
 	  'a')
@@ -205,15 +176,21 @@ do
 	  'b')
 	    buildmode='true'
 	    ;;
+	  'r')
+        replaceDeployedExe='true'
+        ;;
 	  'o')
 	    os="$OPTARG"
 	    ;;
 	  'u')
 	    updatepackages='true'
 	    ;;
-          'd')
-            buildDebPackage='true'
-            ;;
+	  'p')
+        prepareRelease='true'
+        ;;
+	  'P')
+		publishVersion="$OPTARG"
+		;;
 	  'h')
 	    usage
 	    exit 0
@@ -225,21 +202,24 @@ do
 	esac
 done
 
-# Act on program args
-if [[ $updatepackages == true ]]
+if [[ $prepareRelease == true ]]
 then
-	# Using the builtopt cd into the src dir and update packages then exit
-	update_go_packages
-	exit 0
+	compile_program_prechecks
+	compile_program "$architecture" "$os" 'true' 'false'
+	tempReleaseDir=$(prepare_github_release_files "$fullNameProgramPrefix")
+	create_release_notes "$repoRoot" "$tempReleaseDir"
+elif [[ -n $publishVersion ]]
+then
+	create_github_release "$githubUser" "$githubRepoName" "$publishVersion"
+elif [[ $updatepackages == true ]]
+then
+	update_go_packages "$repoRoot" "$SRCdir"
 elif [[ $buildmode == true ]]
 then
-	binary "$architecture" "$os"
-	echo "Complete: binary built"
-elif [[ $buildDebPackage == true ]]
-then
-	debPkg "$architecture" "$os"
+	compile_program_prechecks
+	compile_program "$architecture" "$os" 'false' "$replaceDeployedExe"
 else
-	echo "unknown, bye"
+	echo -e "${RED}ERROR${RESET}: Unknown option or combination of options" >&2
 	exit 1
 fi
 

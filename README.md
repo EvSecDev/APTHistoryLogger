@@ -36,6 +36,38 @@ Quick roadmap of features coming:
 A Debian package is provided for installation. Just `apt install ./apt-history-logger.deb` and you are done!
 Binary is at `/usr/bin/apthl`, Systemd service is called `apthl.service`.
 
+### APTHL Help Menu
+
+```bash
+APT History Logger (APTHL)
+  Watches apt history.log and parses events into single-line JSON
+
+  Options:
+    -d, --daemon                                   Run continously
+    -l, --log-file <path/to/log>                   Input log file [default: /var/log/apt/history.log]
+    -o, --out-file <path/to/file>                  Output to a file instead of stdout
+    -s, --search                                   Search through log file for given search parameters
+        --time-order      <asc|desc>               Order search output ascending/descending by start timestamp [default: asc]
+        --start-timestamp <2010-12-31T23:59:59>    Filter start time of search [default: 1 week ago]
+        --end-timestamp   <2011-12-31T23:59:59>    Filter end time of search [default: now]
+        --event-id        <uuid>                   Filter by specific event id
+        --command-line    <text>                   Filter command line
+        --package-name    <pkg>                    Filter package name
+        --package-version <ver>                    Filter package version
+        --operation <install|upgrade|remove|purge> Filter APT operation
+        --user-name <name>                         Filter user that initiated operation by name
+        --user-uid  <num>                          Filter user that initiated operation by ID
+    -T, --dry-run                                  Does all startups except process the log file
+    -h, --help                                     Show this help menu
+    -v, --verbose <0...5>                          Increase details and frequency of progress messages [default: 1]
+    -V, --version                                  Show version and packages
+        --versionid                                Show only version number
+
+Report bugs to: dev@evsec.net
+APTHistorLogger home page: <https://github.com/EvSecDev/APTHistoryLogger>
+General help using GNU software: <https://www.gnu.org/gethelp/>
+```
+
 ## Notes
 
 ### Log File Monitoring
