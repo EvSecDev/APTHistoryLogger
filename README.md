@@ -36,7 +36,7 @@ Quick roadmap of features coming:
 A Debian package is provided for installation. Just `apt install ./apt-history-logger.deb` and you are done!
 Binary is at `/usr/bin/apthl`, Systemd service is called `apthl.service`.
 
-### APTHL Help Menu
+## APTHL Help Menu
 
 ```bash
 APT History Logger (APTHL)

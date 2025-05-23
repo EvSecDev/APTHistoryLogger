@@ -99,7 +99,7 @@ func logReaderContinuous(logFileInput string, logFileOutput string) {
 			// Parse the event
 			var offset uint32
 			for offset <= uint32(n)-syscall.SizeofInotifyEvent {
-				var event *syscall.InotifyEvent
+				var event syscall.InotifyEvent
 
 				// Retrieve the event
 				eventBytes := buf[offset : offset+syscall.SizeofInotifyEvent]
