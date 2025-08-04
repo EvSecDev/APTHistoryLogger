@@ -152,6 +152,7 @@ Program Build Script and Helpers
 
 Options:
   -b           Build the program using defaults
+  -d           Build debian package
   -r           Replace binary in path with updated one
   -a <arch>    Architecture of compiled binary (amd64, arm64) [default: amd64]
   -o <os>      Which operating system to build for (linux, windows) [default: linux]
@@ -167,7 +168,7 @@ architecture="amd64"
 os="linux"
 
 # Argument parsing
-while getopts 'a:o:P:buprh' opt
+while getopts 'a:o:P:bduprh' opt
 do
 	case "$opt" in
 	  'a')
@@ -176,6 +177,9 @@ do
 	  'b')
 	    buildmode='true'
 	    ;;
+	  'd')
+	    buildmode='package'
+		;;
 	  'r')
         replaceDeployedExe='true'
         ;;
@@ -205,7 +209,8 @@ done
 if [[ $prepareRelease == true ]]
 then
 	compile_program_prechecks
-	compile_program "$architecture" "$os" 'true' 'false'
+	compile_program "$architecture" "$os" 'false' 'false'
+	build_package "$architecture" "$repoRoot"
 	tempReleaseDir=$(prepare_github_release_files "$fullNameProgramPrefix")
 	create_release_notes "$repoRoot" "$tempReleaseDir"
 elif [[ -n $publishVersion ]]
@@ -214,6 +219,11 @@ then
 elif [[ $updatepackages == true ]]
 then
 	update_go_packages "$repoRoot" "$SRCdir"
+elif [[ $buildmode == package ]]
+then
+	compile_program_prechecks
+	compile_program "$architecture" "$os" 'false' 'false'
+	build_package "$architecture" "$repoRoot"
 elif [[ $buildmode == true ]]
 then
 	compile_program_prechecks

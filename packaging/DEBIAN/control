@@ -1,7 +1,7 @@
-Package: apt-history-logger
-Version: 0.2.1
+Package: apthl
+Version: 0.4.0
 Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: EvSecDev <dev@evsec.net>
-Description: A daemon to parse and produce formatted log entries for APT history logs
+Description: A daemon and cli tool to parse and produce formatted log entries for APT history logs

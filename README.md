@@ -4,6 +4,8 @@
 
 This is a simple daemon for Debian systems to read the history.log file produced by the Advanced Package Tool (APT) and produce a parsable single log line.
 
+Additionally, this provides CLI-based searching of APT history log files for specific metadata such as package name, user, or time range.
+
 The APT `history.log` file is more difficult to parse than other traditional logs.
 It contains a multi-line "event" of an APT operation (install, upgrade, ect.).
 This program makes it easy to extract the information contained in those lines and format it into a machine-parsable output.
@@ -27,13 +29,9 @@ In total, the output JSON contains the following information:
 
 **Beware!** This program is still in active development.
 
-Quick roadmap of features coming:
-
-- Dedicated configuration file so specific CLI arguments are not needed
-
 ## Installation
 
-A Debian package is provided for installation. Just `apt install ./apt-history-logger.deb` and you are done!
+A Debian package is provided for installation.
 Binary is at `/usr/bin/apthl`, Systemd service is called `apthl.service`.
 
 ## APTHL Help Menu

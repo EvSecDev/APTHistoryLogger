@@ -3,29 +3,32 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"compress/gzip"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
 	"strings"
 	"sync"
 	"syscall"
 )
 
 func logReaderContinuous(logFileInput string, logFileOutput string) {
+	if strings.HasSuffix(logFileInput, ".gz") {
+		logError("Unsupported file input", fmt.Errorf("compressed files are not supported in continous mode"))
+	}
+
 	log, err := os.Open(logFileInput)
 	logError("Failed to read log file", err)
 	defer log.Close()
 
-	position, err := getLastPosition()
+	logFileInode, logFileOffset, err := getLastPosition(logFileInput)
 	logError("Failed to get position of last log read", err)
 
-	_, err = log.Seek(position, io.SeekStart)
+	_, err = log.Seek(logFileOffset, io.SeekStart)
 	logError("Failed to resume in log", err)
+
+	printMessage(verbosityDebug, "Starting log file read at offset %d\n", logFileOffset)
 
 	// User requested output go to file
 	var fileOutput *os.File
@@ -35,96 +38,19 @@ func logReaderContinuous(logFileInput string, logFileOutput string) {
 		defer fileOutput.Close()
 	}
 
-	var logReader io.Reader
+	// Create background signal handler
+	var signalBlocker sync.WaitGroup // Blocker so log reads/writes can finish before program exits
+	go signalHandler(&signalBlocker, &logFileInode, &logFileOffset)
 
-	if strings.HasSuffix(logFileInput, ".gz") {
-		gzReader, err := gzip.NewReader(log)
-		logError("Failed to read gzip'ed log file", err)
-		defer gzReader.Close()
-
-		logReader = gzReader
-	} else {
-		logReader = log
-	}
-
-	// WaitGroup to ensure that parsing finishes before program exits
-	var signalBlocker sync.WaitGroup
-
-	// Channel for handling interrupt signals (to ensure we save the position on exit)
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
-
-	// Separate thread to listen for signals and ensure cleanup prior to exit
-	go func() {
-		sig := <-sigChan
-
-		printMessage(verbosityStandard, "Received signal: %v\n", sig)
-
-		// Wait for current block parsing to complete before exiting
-		signalBlocker.Wait()
-
-		// Save the current file position before exiting
-		printMessage(verbosityData, "Saving current log file position (%v)\n", position)
-		savePosition(position)
-
-		printMessage(verbosityStandard, "Shutting down\n")
-		os.Exit(0)
-	}()
-
-	printMessage(verbosityProgress, "Setting up inotify to watch for log file changes\n")
-
-	// Open the inotify instance
-	fd, err := syscall.InotifyInit()
-	logError("Failed to initialize inotify", err)
-	defer syscall.Close(fd)
-
-	// Add watcher for the log file
-	watchDescriptor, err := syscall.InotifyAddWatch(fd, logFileInput, syscall.IN_MODIFY|syscall.IN_CLOSE_WRITE)
-	logError("Failed to add log file to inotify watcher", err)
-	defer syscall.InotifyRmWatch(fd, uint32(watchDescriptor))
-
-	// Create a buffer to read the events
-	buf := make([]byte, syscall.SizeofInotifyEvent+1024)
-
-	// Create a channel to signal when to continue to the next iteration
-	done := make(chan bool)
-
-	// Start the goroutine to read and handle events
-	go func() {
-		for {
-			// Read the event
-			n, err := syscall.Read(fd, buf)
-			logError("Error reading inotify event", err)
-
-			// Parse the event
-			var offset uint32
-			for offset <= uint32(n)-syscall.SizeofInotifyEvent {
-				var event syscall.InotifyEvent
-
-				// Retrieve the event
-				eventBytes := buf[offset : offset+syscall.SizeofInotifyEvent]
-				reader := bytes.NewReader(eventBytes)
-				err = binary.Read(reader, binary.LittleEndian, &event)
-				logError("Failed to read event content", err)
-
-				if event.Mask&syscall.IN_MODIFY != 0 {
-					printMessage(verbosityProgress, "File modified: %s\n", logFileInput)
-				}
-
-				// Move the offset forward to the next event
-				offset += syscall.SizeofInotifyEvent + uint32(event.Len)
-			}
-
-			// Signal that we are done processing the event
-			done <- true
-		}
-	}()
+	// Create inotify background watcher
+	fileHasChanged := make(chan bool, 1) // Main blocker for reading new lines
+	fileHasRotated := make(chan bool, 1) // Notify when to switch file inodes and reset offset
+	go changeWatcher(logFileInput, fileHasChanged, fileHasRotated)
 
 	printMessage(verbosityProgress, "Starting log file watch\n")
 
 	// Create a scanner to read the file
-	var scanner *bufio.Scanner
-	scanner = bufio.NewScanner(logReader)
+	scanner := bufio.NewScanner(log)
 
 	if dryRunRequested {
 		printMessage(verbosityStandard, "Dry-run requested, not processing log file. Exiting...\n")
@@ -138,6 +64,11 @@ func logReaderContinuous(logFileInput string, logFileOutput string) {
 		// Process all available lines
 		for scanner.Scan() {
 			line := scanner.Text()
+
+			logFileOffset, err = log.Seek(0, io.SeekCurrent)
+			logError("Failed to get current offset while scanning", err)
+
+			printMessage(verbosityDebug, "Read line, moved to new offset %d\n", logFileOffset)
 
 			if strings.HasPrefix(line, "Start-Date: ") {
 				// Always ensure block buffer is empty on new block
@@ -184,8 +115,10 @@ func logReaderContinuous(logFileInput string, logFileOutput string) {
 				}
 
 				// Save the end position of this block
-				position, err = log.Seek(0, io.SeekCurrent)
+				logFileOffset, err = log.Seek(0, io.SeekCurrent)
 				logError("Failed to retrieve current position in log file", err)
+
+				printMessage(verbosityDebug, "Processed log, currently at offset %d\n", logFileOffset)
 
 				// Unblock signals after block finishes
 				signalBlocker.Done()
@@ -199,20 +132,41 @@ func logReaderContinuous(logFileInput string, logFileOutput string) {
 		err = scanner.Err()
 		logError("Error reading log", err)
 
-		// Get the current file offset
-		offset, err := log.Seek(0, io.SeekCurrent)
-		if err != nil {
-			fmt.Println("Error getting current file offset:", err)
-			return
-		}
-
+		printMessage(verbosityDebug, "Currently at offset %d\n", logFileOffset)
 		printMessage(verbosityProgress, "No more new lines, waiting for file changes\n")
 
 		// Wait for inotify watcher to see that the log file has changed
-		<-done
+		<-fileHasChanged
+
+		select {
+		case reopenLogFile := <-fileHasRotated:
+			if reopenLogFile {
+				// Reopen at file path
+				log.Close()
+				log, err = os.Open(logFileInput)
+				logError("Failed to reopen rotated log file", err)
+
+				// Retrieve new file inode
+				fileInfo, err := os.Stat(logFileInput)
+				logError("unable to stat new log file", err)
+				stat := fileInfo.Sys().(*syscall.Stat_t)
+
+				// Save new file inode to state var
+				logFileInode = stat.Ino
+
+				// Reset offset position for new file
+				logFileOffset = 0
+			}
+		default:
+			// No blocking if no rotation has occured
+		}
 
 		// Rescan for new lines after the last offset
-		log.Seek(offset, io.SeekStart)
+		_, err = log.Seek(logFileOffset, io.SeekStart)
+		logError("Failed to seek to last offset", err)
+
+		printMessage(verbosityDebug, "Scanning for new lines at offset %d\n", logFileOffset)
+
 		scanner = bufio.NewScanner(log) // Reset the scanner to continue scanning after the last offset
 	}
 }
