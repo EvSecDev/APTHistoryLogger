@@ -38,7 +38,7 @@ Binary is at `/usr/bin/apthl`, Systemd service is called `apthl.service`.
 
 ```bash
 APT History Logger (APTHL)
-  Watches apt history.log and parses events into single-line JSON
+  Watches apt history.log and parses events into JSON
 
   Options:
     -d, --daemon                                   Run continously
@@ -52,7 +52,7 @@ APT History Logger (APTHL)
         --command-line    <text>                   Filter command line
         --package-name    <pkg>                    Filter package name
         --package-version <ver>                    Filter package version
-        --operation <install|upgrade|remove|purge> Filter APT operation
+        --operation <op>                           Filter APT operation (install|reinstall|upgrade|remove|purge)
         --user-name <name>                         Filter user that initiated operation by name
         --user-uid  <num>                          Filter user that initiated operation by ID
     -T, --dry-run                                  Does all startups except process the log file

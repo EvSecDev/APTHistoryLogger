@@ -17,18 +17,6 @@ then
 	fi
 fi
 
-# Ensure service is disable on removals
-serviceName="apthl.service"
-enableStatus=$(systemctl is-enabled $serviceName 2>/dev/null)
-if [[ $enableStatus == enabled ]]
-then
-	systemctl disable $serviceName
-	if [[ $? != 0 ]]
-	then
-		echo "Warning: failed to disable systemd service $serviceName"
-	fi
-fi
-
 # Cleanup systemd /lib
 serviceUnitFile="/lib/systemd/system/apthl.service"
 if [[ -f $serviceUnitFile ]]
@@ -38,6 +26,13 @@ then
 	then
 		echo "Warning: failed to remove systemd unit file $serviceUnitFile"
 	fi
+fi
+
+# Reload systemd
+systemctl daemon-reload
+if [[ $? != 0 ]]
+then
+	echo "Warning: failed to reload systemd daemons"
 fi
 
 exit 0

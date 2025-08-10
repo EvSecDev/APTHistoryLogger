@@ -1,9 +1,16 @@
 #!/bin/bash
 
+# Load apparmor profile
+apparmor_parser -r /etc/apparmor.d/usr.bin.apthl
+if [[ $? != 0 ]]
+then
+	echo "Warning: failed to load apparmor profile"
+fi
+
 # Ensure service starts OK
 serviceName="apthl.service"
 enableStatus=$(systemctl is-active $serviceName)
-if [[ $enableStatus == inactive ]]
+if [[ $enableStatus != active ]]
 then
 	systemctl start $serviceName
 	if [[ $? != 0 ]]

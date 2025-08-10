@@ -99,19 +99,35 @@ func logReaderContinuous(logFileInput string, logFileOutput string) {
 					printMessage(verbosityNone, "Failed to parse log entry: %v: (%s)\n", err, strings.ReplaceAll(eventBlock, "\n", ":"))
 				}
 
-				jsonLine, err := json.Marshal(newLog)
-				if err != nil {
-					printMessage(verbosityNone, "Invalid JSON: %v: (%v)\n", err, newLog)
-				}
-
-				// Add newline after each JSON line
-				jsonLine = append(jsonLine, '\n')
-
-				// Output the formatted log
 				if fileOutput != nil {
+					jsonLine, err := json.Marshal(newLog)
+					if err != nil {
+						printMessage(verbosityNone, "Invalid JSON: %v: (%v)\n", err, newLog)
+					}
+
+					// Add newline after each JSON line
+					jsonLine = append(jsonLine, '\n')
+
 					fileOutput.Write(jsonLine)
 				} else {
-					fmt.Println(string(jsonLine))
+					// Handle journald max line size gracefully
+					chunkedLogs, err := splitLog(newLog)
+					if err != nil {
+						printMessage(verbosityNone, "Failed chunking JSON: %v: (%v)\n", err, newLog)
+					}
+
+					for _, chunkedLog := range chunkedLogs {
+						jsonLine, err := json.Marshal(chunkedLog)
+						if err != nil {
+							printMessage(verbosityNone, "Invalid JSON: %v: (%v)\n", err, newLog)
+						}
+
+						// Add newline after each JSON line
+						jsonLine = append(jsonLine, '\n')
+
+						// Output the formatted log
+						fmt.Println(string(jsonLine))
+					}
 				}
 
 				// Save the end position of this block

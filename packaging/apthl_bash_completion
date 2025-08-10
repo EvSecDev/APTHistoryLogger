@@ -1,0 +1,41 @@
+# apthl(1) completion                                        -*- shell-script -*-
+
+_apthl_completions() {
+    local cur prev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    opts="-d --daemon -l --log-file -o --out-file -s --search --time-order --start-timestamp --end-timestamp --event-id --command-line --package-name --package-version --operation --user-name --user-uid -T --dry-run -h --help -v --verbose -V --version --versionid"
+
+    # Completion for --time-order and --operation values
+    time_order_opts="asc desc"
+    operation_opts="install reinstall upgrade remove purge"
+    verbose_opts="0 1 2 3 4 5"
+
+    case "$prev" in
+        --time-order)
+            COMPREPLY=( $(compgen -W "$time_order_opts" -- "$cur") )
+            return 0
+            ;;
+        --operation)
+            COMPREPLY=( $(compgen -W "$operation_opts" -- "$cur") )
+            return 0
+            ;;
+        --verbose|-v)
+            COMPREPLY=( $(compgen -W "$verbose_opts" -- "$cur") )
+            return 0
+            ;;
+        -l|--log-file|-o|--out-file|--start-timestamp|--end-timestamp|--event-id|--command-line|--package-name|--package-version|--user-name|--user-uid)
+            if [[ "$prev" == "-l" || "$prev" == "--log-file" || "$prev" == "-o" || "$prev" == "--out-file" ]]; then
+                COMPREPLY=( $(compgen -f -- "$cur") )
+            fi
+            return 0
+            ;;
+    esac
+
+    # Complete options themselves
+    COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+    return 0
+} && complete -F _apthl_completions apthl
+

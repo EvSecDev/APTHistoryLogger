@@ -65,6 +65,12 @@ func (input LogJSON) findMatches(search SearchParameters) (searchMatched bool, m
 
 			operationMatchFound = true
 		}
+		if input.ReinstallOperation && search.operation.MatchString("reinstall") {
+			matchedLogs.Reinstall = input.Reinstall
+			matchedLogs.ReinstallOperation = input.ReinstallOperation
+
+			operationMatchFound = true
+		}
 		if input.UpgradeOperation && search.operation.MatchString("upgrade") {
 			matchedLogs.Upgrade = input.Upgrade
 			matchedLogs.UpgradeOperation = input.UpgradeOperation
@@ -92,10 +98,11 @@ func (input LogJSON) findMatches(search SearchParameters) (searchMatched bool, m
 
 	if search.pkgName != nil || search.pkgVersion != nil {
 		packageListMap := map[string][]PackageInfo{
-			"install": matchedLogs.Install,
-			"upgrade": matchedLogs.Upgrade,
-			"remove":  matchedLogs.Remove,
-			"purge":   matchedLogs.Purge,
+			"install":   matchedLogs.Install,
+			"reinstall": matchedLogs.Reinstall,
+			"upgrade":   matchedLogs.Upgrade,
+			"remove":    matchedLogs.Remove,
+			"purge":     matchedLogs.Purge,
 		}
 
 		var packageMatchesSearch bool
@@ -107,13 +114,16 @@ func (input LogJSON) findMatches(search SearchParameters) (searchMatched bool, m
 			var matchedPackages []PackageInfo
 			packageMatchesSearch, matchedPackages = searchForMatchingPackages(pkgList, search.pkgName, search.pkgVersion)
 			if packageMatchesSearch {
-				if operationType == "install" {
+				switch operationType {
+				case "install":
 					matchedLogs.Install = matchedPackages
-				} else if operationType == "upgrade" {
+				case "reinsatll":
+					matchedLogs.Reinstall = matchedPackages
+				case "upgrade":
 					matchedLogs.Upgrade = matchedPackages
-				} else if operationType == "remove" {
+				case "remove":
 					matchedLogs.Remove = matchedPackages
-				} else if operationType == "purge" {
+				case "purge":
 					matchedLogs.Purge = matchedPackages
 				}
 			}

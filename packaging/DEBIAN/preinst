@@ -40,6 +40,14 @@ then
 	exit 1
 fi
 
+chown $stateOwner:root ${stateDirectory}
+if [[ $? != 0 ]]
+then
+	echo "Failed to change state directory ownership for $stateFile" >&2
+	exit 1
+fi
+
+
 chown $stateOwner:root ${stateFile}
 if [[ $? != 0 ]]
 then

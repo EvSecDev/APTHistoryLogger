@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# Cleanups on remove are not needed for upgrades
+if [[ $1 == upgrade ]] || [[ $1 == failed-upgrade ]] || [[ $1 == abort-upgrade ]]
+then
+	exit 0
+fi
+
+# Remove apparmor profile
+apparmor_parser -R /etc/apparmor.d/usr.bin.apthl
+if [[ $? != 0 ]]
+then
+	echo "Warning: failed to unload apparmor profile"
+fi
+
+# Ensure service is disable on removals
+serviceName="apthl.service"
+systemctl stop apthl.service
+enableStatus=$(systemctl is-enabled $serviceName 2>/dev/null)
+if [[ $enableStatus == enabled ]]
+then
+	systemctl disable $serviceName
+	if [[ $? != 0 ]]
+	then
+		echo "Warning: failed to disable systemd service $serviceName"
+	fi
+fi
+
+exit 0

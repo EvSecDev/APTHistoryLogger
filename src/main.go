@@ -14,8 +14,11 @@ import (
 //	GLOBAL CONSTANTS
 // ###################################
 
-const stateDirectory string = "/var/lib/APTHistoryLogger"
-const logStateFilePath string = "/var/lib/APTHistoryLogger/log.state"
+const (
+	stateDirectory   string = "/var/lib/APTHistoryLogger"
+	logStateFilePath string = "/var/lib/APTHistoryLogger/log.state"
+	journalDMaxSize         = 16 * 999 // Try to stay well below journald max log entry
+)
 const ( // Descriptive Names for available verbosity levels
 	verbosityNone int = iota
 	verbosityStandard
@@ -30,29 +33,31 @@ const ( // Descriptive Names for available verbosity levels
 // ###################################
 
 type LogJSON struct {
-	EventID          string        `json:"Event-ID"`
-	CommandLine      string        `json:"Command-Line"`
-	StartTimestamp   string        `json:"Start-Timestamp"`
-	EndTimeStamp     string        `json:"End-TimeStamp"`
-	ElapsedSeconds   int           `json:"Elapsed-Seconds"`
-	RequestedBy      string        `json:"Requested-By,omitempty"`
-	RequestedByUID   int           `json:"Requested-By-UID,omitempty"`
-	TotalPackages    int           `json:"Total-Packages,omitempty"`
-	Install          []PackageInfo `json:"Install,omitempty"`
-	Upgrade          []PackageInfo `json:"Upgrade,omitempty"`
-	Remove           []PackageInfo `json:"Remove,omitempty"`
-	Purge            []PackageInfo `json:"Purge,omitempty"`
-	InstallOperation bool          `json:"Install-Operation,omitempty"`
-	UpgradeOperation bool          `json:"Upgrade-Operation,omitempty"`
-	RemoveOperation  bool          `json:"Remove-Operation,omitempty"`
-	PurgeOperation   bool          `json:"Purge-Operation,omitempty"`
-	Error            string        `json:"Error,omitempty"`
+	EventID            string        `json:"EventID"`
+	CommandLine        string        `json:"CommandLine"`
+	StartTimestamp     string        `json:"StartTimestamp"`
+	EndTimeStamp       string        `json:"EndTimeStamp"`
+	ElapsedSeconds     int           `json:"ElapsedSeconds"`
+	RequestedBy        string        `json:"RequestedBy,omitempty"`
+	RequestedByUID     int           `json:"RequestedByUID,omitempty"`
+	TotalPackages      int           `json:"TotalPackages,omitempty"`
+	Install            []PackageInfo `json:"Install,omitempty"`
+	Reinstall          []PackageInfo `json:"Reinstall,omitempty"`
+	Upgrade            []PackageInfo `json:"Upgrade,omitempty"`
+	Remove             []PackageInfo `json:"Remove,omitempty"`
+	Purge              []PackageInfo `json:"Purge,omitempty"`
+	InstallOperation   bool          `json:"InstallOperation,omitempty"`
+	ReinstallOperation bool          `json:"ReinstallOperation,omitempty"`
+	UpgradeOperation   bool          `json:"UpgradeOperation,omitempty"`
+	RemoveOperation    bool          `json:"RemoveOperation,omitempty"`
+	PurgeOperation     bool          `json:"PurgeOperation,omitempty"`
+	Error              string        `json:"Error,omitempty"`
 }
 
 type PackageInfo struct {
 	Name       string `json:"package"`
 	Arch       string `json:"archiecture"`
-	OldVersion string `json:"old-version,omitempty"`
+	OldVersion string `json:"oldversion,omitempty"`
 	Version    string `json:"version"`
 }
 
@@ -84,7 +89,7 @@ type SearchParameters struct {
 }
 
 type SearchOutput struct {
-	TotalResults int       `json:"total-results"`
+	TotalResults int       `json:"totalresults"`
 	Results      []LogJSON `json:"results"`
 }
 
@@ -118,7 +123,7 @@ func main() {
 
 	const usage = `
 APT History Logger (APTHL)
-  Watches apt history.log and parses events into single-line JSON
+  Watches apt history.log and parses events into JSON
 
   Options:
     -d, --daemon                                   Run continously
@@ -132,7 +137,7 @@ APT History Logger (APTHL)
         --command-line    <text>                   Filter command line
         --package-name    <pkg>                    Filter package name
         --package-version <ver>                    Filter package version
-        --operation <install|upgrade|remove|purge> Filter APT operation
+        --operation <op>                           Filter APT operation (install|reinstall|upgrade|remove|purge)
         --user-name <name>                         Filter user that initiated operation by name
         --user-uid  <num>                          Filter user that initiated operation by ID
     -T, --dry-run                                  Does all startups except process the log file
@@ -175,12 +180,12 @@ General help using GNU software: <https://www.gnu.org/gethelp/>
 	flag.Usage = func() { fmt.Printf("Usage: %s [OPTIONS]...%s", os.Args[0], usage) }
 	flag.Parse()
 
-	const progVersion string = "v0.4.0"
+	const progVersion string = "v1.0.0"
 	if versionInfoRequested {
 		fmt.Printf("APTHistoryLogger %s\n", progVersion)
 		fmt.Printf("Built using %s(%s) for %s on %s\n", runtime.Version(), runtime.Compiler, runtime.GOOS, runtime.GOARCH)
 		fmt.Print("License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>\n")
-		fmt.Print("Direct Package Imports: runtime strings compress/gzip strconv io bufio slices encoding/json flag os/signal fmt time syscall regexp os bytes crypto/sha256 sync path/filepath encoding/binary\n")
+		fmt.Print("Direct Package Imports: runtime strings compress/gzip strconv io bufio slices encoding/json flag os/signal reflect fmt time syscall regexp os bytes crypto/sha256 sync path/filepath encoding/binary\n")
 		return
 	} else if versionRequested {
 		fmt.Println(progVersion)

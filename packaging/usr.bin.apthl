@@ -1,0 +1,21 @@
+profile APTHistoryLogger /usr/bin/apthl flags=(enforce) {
+  # Receive signals
+  signal receive set=(int kill term urg),
+  # Send signals to self
+  signal send set=(int urg) peer=APTHistoryLogger,
+
+  # Sockets
+  unix (send) type=stream,
+
+  # Misc access
+  /sys/kernel/mm/transparent_hugepage/hpage_pmd_size r,
+
+  # Log reading access
+  /var/log/apt/* r,
+
+  # State keeping
+  /var/lib/APTHistoryLogger/log.state rw,
+
+  # For timestamping
+  /usr/share/zoneinfo/** r,
+}

@@ -45,6 +45,8 @@ func parseEvent(event string) (newLog LogJSON, err error) {
 			newLog.Error = fieldValue
 		case "Install":
 			newLog.Install, err = parsePackages(fieldValue)
+		case "Reinstall":
+			newLog.Reinstall, err = parsePackages(fieldValue)
 		case "Upgrade":
 			newLog.Upgrade, err = parsePackages(fieldValue)
 		case "Remove":
@@ -64,6 +66,9 @@ func parseEvent(event string) (newLog LogJSON, err error) {
 
 	if len(newLog.Install) > 0 {
 		newLog.InstallOperation = true
+	}
+	if len(newLog.Reinstall) > 0 {
+		newLog.ReinstallOperation = true
 	}
 	if len(newLog.Upgrade) > 0 {
 		newLog.UpgradeOperation = true
@@ -87,7 +92,7 @@ func parseEvent(event string) (newLog LogJSON, err error) {
 	}
 
 	// Add total package number for this operation
-	newLog.TotalPackages = len(newLog.Install) + len(newLog.Upgrade) + len(newLog.Remove) + len(newLog.Purge)
+	newLog.TotalPackages = len(newLog.Install) + len(newLog.Reinstall) + len(newLog.Upgrade) + len(newLog.Remove) + len(newLog.Purge)
 
 	return
 }
@@ -170,6 +175,11 @@ func parsePackages(rawList string) (packageList []PackageInfo, err error) {
 		// Split on spaces
 		pkgFields := strings.Fields(pkg)
 
+		if len(pkgFields) < 2 {
+			err = fmt.Errorf("could identify more than 2 fields to extract name")
+			return
+		}
+
 		// Extract fields
 		packageInfo.Name = pkgFields[0]
 		packageInfo.Arch = pkgFields[1]
@@ -181,7 +191,7 @@ func parsePackages(rawList string) (packageList []PackageInfo, err error) {
 				packageInfo.OldVersion = pkgFields[2]
 				packageInfo.Version = pkgFields[3]
 			}
-		} else {
+		} else if len(pkgFields) == 3 {
 			packageInfo.Version = pkgFields[2]
 		}
 
@@ -246,10 +256,10 @@ func (opts SearchOptions) parseSearchOptions() (validatedOpts SearchParameters, 
 	if opts.operation != "" {
 		opts.operation = strings.ToLower(opts.operation)
 
-		operationCheckRegex := regexp.MustCompile(`^(install|upgrade|remove|purge)(\|(install|upgrade|remove|purge))*$`)
+		operationCheckRegex := regexp.MustCompile(`^(install|reinstall|upgrade|remove|purge)(\|(install|reinstall|upgrade|remove|purge))*$`)
 
 		if !operationCheckRegex.MatchString(opts.operation) {
-			err = fmt.Errorf("invalid operation type: must be install, upgrade, remove, or purge (separated by '|' optionally)")
+			err = fmt.Errorf("invalid operation type: must be install, reinstall, upgrade, remove, or purge (separated by '|' optionally)")
 			return
 		}
 

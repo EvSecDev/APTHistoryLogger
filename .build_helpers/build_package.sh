@@ -40,10 +40,12 @@ function build_package() {
         fi
         sed -i 's/Version:.*/Version: '"$binaryVersion"'/' "$repoRoot/packaging/DEBIAN/control"
 
-        debPkgName="${outputEXE}-v${binaryVersion}-${arch}"
+        debPkgName="apt-history-logger"
+        debPkgOutFile="${outputEXE}-v${binaryVersion}-${arch}.deb"
 
         # Temp dir for package
         mkdir "$repoRoot/temp"
+        trap 'rm -r "$tempDir" 2>/dev/null' ERR
 
         # Prepare directories and move files in
         tempDir="$repoRoot/temp"
@@ -51,18 +53,24 @@ function build_package() {
         mkdir -p "$pkgDir"
         mkdir -p "$pkgDir/usr/bin"
         mkdir -p "$pkgDir/lib/systemd/system"
+        mkdir -p "$pkgDir/etc/apparmor.d"
+        mkdir -p "$pkgDir/usr/share/bash-completion/completions"
 
         mv "$outputEXE" "$pkgDir/usr/bin/"
         cp "$repoRoot/packaging/apthl.service" "$pkgDir/lib/systemd/system/"
+        cp "$repoRoot/packaging/usr.bin.apthl" "$pkgDir/etc/apparmor.d/"
+        cp "$repoRoot/packaging/apthl_bash_completion" "$pkgDir/usr/share/bash-completion/completions/apthl"
         cp -r "$repoRoot/packaging/DEBIAN" "$pkgDir/"
         cp "$repoRoot/LICENSE.md" "$pkgDir/DEBIAN/copyright"
         sed -i 's/Architecture: amd64/Architecture: '"$arch"'/' "$pkgDir/DEBIAN/control"
 
         chmod 755 "$pkgDir/DEBIAN"
         chmod 644 "$pkgDir"/DEBIAN/*
-        chmod 755 "$pkgDir"/DEBIAN/{postrm,postinst,preinst}
+        chmod 755 "$pkgDir"/DEBIAN/{postrm,postinst,preinst,prerm}
         chmod 644 "$pkgDir"/lib/systemd/system/*
         chmod 755 "$pkgDir"/usr/bin/*
+        chmod 644 "$pkgDir"/etc/apparmor.d/*
+        chmod 644 "$pkgDir/usr/share/bash-completion/completions/apthl"
 
         # Move into build dir
         cd "$tempDir"
@@ -73,7 +81,11 @@ function build_package() {
         # Move package back to root
         mv "$pkgDir".deb "$repoRoot/"
         cd "$repoRoot/"
+        mv "$debPkgName.deb" "$debPkgOutFile"
+        sha256sum "$debPkgOutFile" > "$repoRoot/$debPkgOutFile.sha256"
 
         # Cleanup build dir
         rm -r "$tempDir" 2>/dev/null
+
+        echo "Debian package built at $repoRoot/$debPkgOutFile"
 }
